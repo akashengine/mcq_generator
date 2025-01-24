@@ -26,7 +26,7 @@ if not st.session_state["authenticated"]:
     if st.button("Login"):
         if password == APP_PASSWORD:
             st.session_state["authenticated"] = True
-            st.success("Logged in successfully!")
+            st.experimental_rerun()
         else:
             st.error("Invalid password.")
     st.stop()
