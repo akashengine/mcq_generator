@@ -9,6 +9,7 @@ API_KEY = os.getenv("DIFY_API_KEY")
 APP_PASSWORD = os.getenv("APP_PASSWORD")
 BASE_URL = "http://testing.drishtigpt.com/v1"
 
+# Validate API Key and Password
 if not API_KEY:
     st.error("API Key not found. Please set it as an environment variable `DIFY_API_KEY`.")
     st.stop()
@@ -17,15 +18,13 @@ if not APP_PASSWORD:
     st.error("App password not found. Please set it as an environment variable `APP_PASSWORD`.")
     st.stop()
 
-# Authentication
+# Authenticate User
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 if not st.session_state["authenticated"]:
     password = st.text_input("Enter Password", type="password")
-    login_clicked = st.button("Login")
-
-    if login_clicked:
+    if st.button("Login"):
         if password == APP_PASSWORD:
             st.session_state["authenticated"] = True
             st.success("Logged in successfully!")
@@ -43,25 +42,22 @@ def start_workflow(subject, count, complexity, keywords, question_type, user_id)
     payload = {
         "inputs": {
             "subject": subject,
-            "count": str(count),  # Ensure count is a string
+            "count": str(count),
             "complexity": complexity,
             "keywords": keywords,
             "question_type": question_type,
         },
-        "response_mode": "blocking",
+        "response_mode": "streaming",  # Streaming for real-time updates
         "user": user_id,
     }
-
+    st.write(f"Request Payload: {payload}")  # Debugging
     try:
         response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx and 5xx)
+        response.raise_for_status()
         return response.json()
-    except requests.exceptions.HTTPError as http_err:
-        st.error(f"HTTP error occurred: {http_err} - {response.text}")
-    except Exception as err:
-        st.error(f"An error occurred: {err}")
-    return {"error": "Failed to connect to the API."}
-
+    except requests.exceptions.RequestException as e:
+        st.error(f"HTTP error occurred: {e}")
+        return None
 
 def get_workflow_output(workflow_id):
     url = f"{BASE_URL}/workflows/run/{workflow_id}"
@@ -69,10 +65,15 @@ def get_workflow_output(workflow_id):
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json",
     }
-    response = requests.get(url, headers=headers)
-    return response.json()
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"HTTP error occurred while fetching workflow status: {e}")
+        return None
 
-# Initialize session state for workflow tasks
+# Initialize session state for maintaining workflow tasks
 if "tasks" not in st.session_state:
     st.session_state.tasks = pd.DataFrame(columns=["Timestamp", "Subject", "Workflow ID", "Status", "Output"])
 
@@ -97,10 +98,10 @@ def main():
 
         if st.button("Run Workflow"):
             with st.spinner("Starting workflow..."):
-                user_id = "user-123"  # Replace with dynamic user ID if needed
+                user_id = "user-123"  # Replace with a dynamic user ID if needed
                 response = start_workflow(subject, count, complexity, keywords, question_type, user_id)
 
-                if "workflow_run_id" in response:
+                if response and "workflow_run_id" in response:
                     workflow_id = response["workflow_run_id"]
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
