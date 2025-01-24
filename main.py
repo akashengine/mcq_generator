@@ -17,16 +17,18 @@ if not APP_PASSWORD:
     st.error("App password not found. Please set it as an environment variable `APP_PASSWORD`.")
     st.stop()
 
-# Authenticate User
+# Authentication
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 if not st.session_state["authenticated"]:
     password = st.text_input("Enter Password", type="password")
-    if st.button("Login"):
+    login_clicked = st.button("Login")
+
+    if login_clicked:
         if password == APP_PASSWORD:
             st.session_state["authenticated"] = True
-            st.experimental_rerun()
+            st.success("Logged in successfully!")
         else:
             st.error("Invalid password.")
     st.stop()
@@ -61,7 +63,7 @@ def get_workflow_output(workflow_id):
     response = requests.get(url, headers=headers)
     return response.json()
 
-# Initialize session state for maintaining workflow tasks
+# Initialize session state for workflow tasks
 if "tasks" not in st.session_state:
     st.session_state.tasks = pd.DataFrame(columns=["Timestamp", "Subject", "Workflow ID", "Status", "Output"])
 
@@ -86,7 +88,7 @@ def main():
 
         if st.button("Run Workflow"):
             with st.spinner("Starting workflow..."):
-                user_id = "user-123"  # Replace with a dynamic user ID if needed
+                user_id = "user-123"  # Replace with dynamic user ID if needed
                 response = start_workflow(subject, count, complexity, keywords, question_type, user_id)
 
                 if "workflow_run_id" in response:
