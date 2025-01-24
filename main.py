@@ -43,7 +43,7 @@ def start_workflow(subject, count, complexity, keywords, question_type, user_id)
     payload = {
         "inputs": {
             "subject": subject,
-            "count": str(count),
+            "count": str(count),  # Ensure count is a string
             "complexity": complexity,
             "keywords": keywords,
             "question_type": question_type,
@@ -51,8 +51,17 @@ def start_workflow(subject, count, complexity, keywords, question_type, user_id)
         "response_mode": "blocking",
         "user": user_id,
     }
-    response = requests.post(url, headers=headers, json=payload)
-    return response.json()
+
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx and 5xx)
+        return response.json()
+    except requests.exceptions.HTTPError as http_err:
+        st.error(f"HTTP error occurred: {http_err} - {response.text}")
+    except Exception as err:
+        st.error(f"An error occurred: {err}")
+    return {"error": "Failed to connect to the API."}
+
 
 def get_workflow_output(workflow_id):
     url = f"{BASE_URL}/workflows/run/{workflow_id}"
