@@ -5,44 +5,49 @@ import os
 from datetime import datetime
 
 # Environment variables
-API_KEY = os.getenv("DIFY_API_KEY")
-APP_PASSWORD = os.getenv("APP_PASSWORD")
+API_KEY = st.secrets["DIFY_API_KEY"]
+APP_PASSWORD = st.secrets["APP_PASSWORD"]
 BASE_URL = "http://testing.drishtigpt.com/v1"
-
-# Validate credentials
-if not API_KEY or not APP_PASSWORD:
-    st.error("Missing environment variables. Set DIFY_API_KEY and APP_PASSWORD.")
-    st.stop()
 
 # Authentication
 if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+    st.session_state["authenticated"] = False
 
-if not st.session_state.authenticated:
+if not st.session_state["authenticated"]:
     password = st.text_input("Enter Password", type="password")
-    if st.button("Login") and password == APP_PASSWORD:
-        st.session_state.authenticated = True
-        st.success("Logged in successfully!")
+    if st.button("Login"):
+        if password == APP_PASSWORD:
+            st.session_state["authenticated"] = True
+            st.success("Logged in successfully!")
+            st.rerun()
+        else:
+            st.error("Invalid password.")
     st.stop()
 
-# Helper function for API calls
+# Initialize task list
+if "tasks" not in st.session_state:
+    st.session_state.tasks = []
+
 def start_workflow(subject, count, complexity, keywords, question_type):
+    url = f"{BASE_URL}/workflows/run"
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "inputs": {
+            "subject": subject,
+            "count": str(count),
+            "complexity": complexity,
+            "keywords": keywords,
+            "question_type": question_type
+        },
+        "response_mode": "blocking",
+        "user": "abc-123"
+    }
+    
     try:
-        response = requests.post(
-            f"{BASE_URL}/workflows/run",
-            headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-            json={
-                "inputs": {
-                    "subject": subject,
-                    "count": str(count),
-                    "complexity": complexity,
-                    "keywords": keywords,
-                    "question_type": question_type
-                },
-                "response_mode": "blocking",
-                "user": "abc-123"
-            }
-        )
+        response = requests.post(url, headers=headers, json=payload)
         return response.json()
     except Exception as e:
         st.error(f"API Error: {str(e)}")
@@ -59,10 +64,6 @@ def process_questions(result_text):
             explanation = parts[6].split(":")[1].strip()
             questions.append([question, *options, correct, explanation])
     return questions
-
-# Initialize session state
-if "tasks" not in st.session_state:
-    st.session_state.tasks = []
 
 # Main app
 st.title("Question Generator")
@@ -101,7 +102,7 @@ with tab1:
                     st.error(f"Generation failed: {result.get('error', 'Unknown error')}")
 
 with tab2:
-    if not st.session_state.tasks:
+    if len(st.session_state.tasks) == 0:
         st.info("No tasks generated yet")
     else:
         for task in st.session_state.tasks:
