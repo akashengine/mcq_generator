@@ -3,15 +3,18 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-# Config
 API_KEY = st.secrets["DIFY_API_KEY"]
-APP_PASSWORD = st.secrets["APP_PASSWORD"] 
+APP_PASSWORD = st.secrets["APP_PASSWORD"]
 
 def start_workflow(subject, count, complexity, keywords, question_type):
    url = "https://testing.drishtigpt.com/v1/workflows/run"
+   headers = {
+       "Authorization": f"Bearer {API_KEY}",
+       "Content-Type": "application/json"
+   }
    payload = {
        "inputs": {
-           "subject": subject,
+           "subject": subject, 
            "count": str(count),
            "complexity": complexity,
            "keywords": keywords,
@@ -20,29 +23,41 @@ def start_workflow(subject, count, complexity, keywords, question_type):
        "response_mode": "blocking",
        "user": "abc-123"
    }
-   headers = {
-       "Authorization": f"Bearer {API_KEY}",
-       "Content-Type": "application/json"
-   }
    
-   response = requests.post(url, headers=headers, json=payload)
-   return response.json()
+   try:
+       response = requests.post(url, headers=headers, json=payload)
+       response.raise_for_status()
+       return response.json()
+   except Exception as e:
+       st.error(f"API Error: {e}")
+       return None
 
 def process_questions(result_text):
    questions = []
-   for q in result_text.split("\n\n"):
-       if "Correct Answer" in q:
-           parts = q.split("\n")
-           question = parts[0].split(":")[1].strip()
-           options = [p.strip() for p in parts[1:5]]
-           correct = parts[5].split(":")[1].strip()
-           explanation = parts[6].split(":")[1].strip()
-           questions.append([question, *options, correct, explanation])
+   current_q = []
+   
+   for line in result_text.split("\n"):
+       if line.startswith("Question:"):
+           if current_q:
+               questions.append(current_q)
+           current_q = [line.split("Question:")[1].strip()]
+       elif line.strip().startswith("(") and len(line.strip()) > 2:
+           current_q.append(line.strip())
+       elif line.startswith("Correct Answer:"):
+           current_q.append(line.split("Correct Answer:")[1].strip())
+       elif line.startswith("Explanation:"):
+           current_q.append(line.split("Explanation:")[1].strip())
+           
+   if current_q:
+       questions.append(current_q)
+       
    return questions
 
-# Auth check
+# Authentication
 if "authenticated" not in st.session_state:
    st.session_state.authenticated = False
+if "results" not in st.session_state:
+   st.session_state.results = []
 
 if not st.session_state.authenticated:
    password = st.text_input("Password", type="password")
@@ -72,6 +87,40 @@ if submitted:
            result = response["data"]
            if result["status"] == "succeeded":
                questions = process_questions(result["outputs"]["result"])
-               df = pd.DataFrame(questions, columns=["Question", "Options", "Option 1", "Option 2", "Option 3", "Correct Answer", "Explanation"])
+               formatted_questions = []
+               
+               for q in questions:
+                   if len(q) >= 6:  # Question + 4 options + correct + explanation
+                       formatted_questions.append({
+                           "Question": q[0],
+                           "Options": "\n".join(q[1:5]),
+                           "Correct Answer": q[5],
+                           "Explanation": q[6] if len(q) > 6 else ""
+                       })
+               
+               st.session_state.results.insert(0, {
+                   "timestamp": datetime.now(),
+                   "questions": formatted_questions
+               })
+               
                st.success("Questions generated successfully!")
-               st.dataframe(df)
+               
+               with st.expander("View Generated Questions", expanded=True):
+                   for q in formatted_questions:
+                       st.markdown(f"**Question:** {q['Question']}")
+                       st.markdown(f"**Options:**\n{q['Options']}")
+                       st.markdown(f"**Correct Answer:** {q['Correct Answer']}")
+                       st.markdown(f"**Explanation:** {q['Explanation']}")
+                       st.divider()
+
+# Show previous results
+if st.session_state.results:
+   st.header("Previously Generated Questions")
+   for result in st.session_state.results[1:]:  # Skip the most recent one
+       with st.expander(f"Generated at {result['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}"):
+           for q in result["questions"]:
+               st.markdown(f"**Question:** {q['Question']}")
+               st.markdown(f"**Options:**\n{q['Options']}")
+               st.markdown(f"**Correct Answer:** {q['Correct Answer']}")
+               st.markdown(f"**Explanation:** {q['Explanation']}")
+               st.divider()
